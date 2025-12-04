@@ -215,10 +215,12 @@
                         // Khai thác Clustering Model cho Segmentation
                         { text: "K-Means Clustering", value: "kmeans", knowledge_key: "kmeans_segmentation" },
                         { text: "Mean Shift Clustering", value: "mean_shift", knowledge_key: "mean_shift_segmentation" }
-                    ]
+                    ],
+                    is_knowledge_switcher: true
                 },
                 // Tham số chung cho cả hai mô hình (chủ yếu cho K-Means)
-                { name: "Số lượng Nhóm (K)", key: "n_clusters", type: "number", default: 3, step: 1 }
+                { name: "Số lượng Nhóm (K)", key: "n_clusters", type: "number", default: 3, step: 1 },
+                { name: "Bandwidth (Mean Shift)", key: "bandwidth", type: "number", default: 0, step: 0.1 }
             ],
             // Dùng khóa kiến thức rẽ nhánh vì có dropdown
             knowledge_keys: {
@@ -316,7 +318,16 @@
                 <h4>Ảnh Before & After:</h4>
                 <div class="image-display">
                     <div class="col"> <img id="img-before-${techKey}" src="" alt="Ảnh Gốc" style="display:none;"> <p>Ảnh Gốc</p> </div>
-                    <div class="col"> <img id="img-after-${techKey}" src="" alt="Ảnh Đã Xử Lý" style="display:none;"> <p>Ảnh Đã Lọc</p> </div>
+                    <div class="col"> 
+                        <img id="img-after-${techKey}" src="" alt="Ảnh Đã Xử Lý" style="display:none;"> <p>Ảnh Đã Lọc</p> 
+                        <button 
+                            type="button" 
+                            onclick="downloadImage('img-after-${techKey}', 'processed_${techKey}.png')"
+                            style="margin-top: 5px; padding: 5px 10px; background-color: #27ae60; color: white; border: none; cursor: pointer; border-radius: 3px;"
+                        >
+                            ⬇️ Tải ảnh này về
+                        </button>
+                    </div>
                 </div>
                 ${frequencyChartHTML}
             </div>
@@ -336,27 +347,56 @@
             });
         }
 
+        const modelSelect = detailArea.querySelector('select[name="model_type"]'); 
+    
+        if (modelSelect) {
+            // TÌM CẤU HÌNH THAM SỐ CỦA DROPDOWN NÀY
+            const modelParamConfig = config.params.find(p => p.key === 'model_type'); 
+            
+            modelSelect.addEventListener('change', async (event) => {
+                const selectedType = event.target.value;
+                // Tìm khóa kiến thức (knowledgeKey) dựa trên giá trị đã chọn
+                const option = modelParamConfig.options.find(opt => opt.value === selectedType);
+                const knowledgeKey = option ? option.knowledge_key : null;
+                
+                if (knowledgeKey) {
+                    // Tải và cập nhật nội dung kiến thức
+                    await updateKnowledgeDisplay(techKey, knowledgeKey); 
+                }
+            });
+        }
+
         // Gắn sự kiện submit cho Form
         document.getElementById(`simulation-form-${techKey}`).addEventListener('submit', (event) => handleFormSubmit(event, techKey));
     }
 
     // Hàm updateKnowledgeDisplay cần sửa để nhận knowledgeKey TRỰC TIẾP
     async function updateKnowledgeDisplay(techKey, knowledgeKey) {
-        // SỬ DỤNG ID CỐ ĐỊNH knowledge-content-${techKey}
         const knowledgeSection = document.getElementById(`knowledge-content-${techKey}`); 
         if (!knowledgeSection) return; 
 
         // 1. Tải KIẾN THỨC
         const knowledgeResponse = await fetch(`/api/knowledge/${knowledgeKey}`);
-        // ... (logic tải và hiển thị kiến thức) ...
+        
         if (knowledgeResponse.ok) {
             const knowledge = await knowledgeResponse.json();
+            
+            // 2. Cập nhật nội dung HTML
             knowledgeSection.innerHTML = `
                 <h3>📖 Kiến thức cơ bản về ${knowledge.name}</h3>
                 <p>${knowledge.description}</p>
                 <p><strong>Công thức:</strong> <span class="latex">${knowledge.formula}</span></p> 
                 <p><strong>Mục đích:</strong> ${knowledge.purpose}</p>
             `;
+
+            // 3. [QUAN TRỌNG] KÍCH HOẠT LẠI MATHJAX CHO KHU VỰC MỚI
+            // Kiểm tra xem MathJax đã tải chưa trước khi gọi
+            if (window.MathJax) {
+                MathJax.typesetPromise([knowledgeSection]).then(() => {
+                    console.log("MathJax updated!");
+                }).catch((err) => console.log("MathJax error:", err));
+            }
+
         } else {
             knowledgeSection.innerHTML = "<p>Lỗi tải kiến thức.</p>";
         }
@@ -388,7 +428,25 @@
             }
         }).join('');
     }
+    function downloadImage(imgId, fileName) {
+        const img = document.getElementById(imgId);
+        
+        // Kiểm tra xem có ảnh không
+        if (!img || !img.src || img.src === window.location.href || img.style.display === 'none') {
+            alert("Chưa có ảnh kết quả để tải về!");
+            return;
+        }
 
+        // Tạo thẻ <a> ảo để kích hoạt tải về
+        const link = document.createElement('a');
+        link.href = img.src; // Lấy nguồn ảnh hiện tại (Base64 string)
+        link.download = fileName; // Tên file khi tải về
+        
+        // Kích hoạt click và dọn dẹp
+        document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
     async function handleFormSubmit(event, techKey) {
         event.preventDefault(); // Ngăn chặn form submit truyền thống
         const form = event.target;
@@ -412,10 +470,16 @@
             
             if (originalResponse.ok) {
                 const originalBlob = await originalResponse.blob();
-                // Sử dụng URL của blob PNG nhận được để hiển thị ảnh gốc
                 imgBefore.src = URL.createObjectURL(originalBlob);
                 imgBefore.style.display = 'block';
-                imgAfter.style.display = 'none'; // Ẩn kết quả cũ
+                
+                // --- KÍCH HOẠT TÍNH NĂNG CHỌN VÙNG ---
+                // Đợi ảnh load xong mới tính toán kích thước được
+                imgBefore.onload = () => {
+                    initImageSelection(`img-before-${techKey}`);
+                };
+                
+                imgAfter.style.display = 'none'; 
             } else {
                 // Xử lý lỗi nếu không thể hiển thị ảnh gốc
                 imgBefore.alt = "Lỗi: Không thể hiển thị ảnh gốc (.tif)";
@@ -467,7 +531,147 @@
             console.error(error);
         }
     }
+    let isDragging = false;
+    let startX, startY;
+    let selectionBox = null;
+    let pixelInfoBox = null;
+    let currentImgElement = null;
 
+    // Hàm khởi tạo tính năng chọn vùng cho một ảnh cụ thể
+    function initImageSelection(imgId) {
+        const img = document.getElementById(imgId);
+        if (!img) return;
+        
+        // Bọc ảnh vào container nếu chưa có
+        if (!img.parentElement.classList.contains('img-container')) {
+            const container = document.createElement('div');
+            container.className = 'img-container';
+            img.parentNode.insertBefore(container, img);
+            container.appendChild(img);
+            
+            // Tạo hộp chọn (Selection Box)
+            selectionBox = document.createElement('div');
+            selectionBox.className = 'selection-box';
+            container.appendChild(selectionBox);
+
+            // Tạo hộp thông tin pixel (Tooltip)
+            pixelInfoBox = document.createElement('div');
+            pixelInfoBox.className = 'pixel-info';
+            container.appendChild(pixelInfoBox);
+        } else {
+            // Nếu đã có container, lấy lại tham chiếu
+            selectionBox = img.parentElement.querySelector('.selection-box');
+            pixelInfoBox = img.parentElement.querySelector('.pixel-info');
+        }
+        
+        currentImgElement = img;
+
+        // --- GẮN SỰ KIỆN CHUỘT ---
+
+        // 1. Hiển thị Tọa độ (Hover)
+        img.addEventListener('mousemove', (e) => {
+            const rect = img.getBoundingClientRect();
+            // Tính tọa độ thực tế trên ảnh (scale theo kích thước hiển thị)
+            const scaleX = img.naturalWidth / img.width;
+            const scaleY = img.naturalHeight / img.height;
+            
+            const x = Math.floor((e.clientX - rect.left) * scaleX);
+            const y = Math.floor((e.clientY - rect.top) * scaleY);
+            
+            // Cập nhật tooltip
+            pixelInfoBox.style.display = 'block';
+            pixelInfoBox.style.left = (e.clientX - rect.left + 10) + 'px';
+            pixelInfoBox.style.top = (e.clientY - rect.top + 10) + 'px';
+            pixelInfoBox.innerText = `X: ${x}, Y: ${y}`; // Có thể thêm RGB nếu vẽ lên canvas
+            
+            // Xử lý kéo chuột (Dragging)
+            if (isDragging) {
+                updateSelectionBox(e, rect);
+            }
+        });
+
+        img.addEventListener('mouseout', () => {
+            pixelInfoBox.style.display = 'none';
+        });
+
+        // 2. Bắt đầu chọn (MouseDown)
+        img.addEventListener('mousedown', (e) => {
+            e.preventDefault(); // Ngăn kéo ảnh mặc định
+            isDragging = true;
+            const rect = img.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            
+            // Reset hộp chọn
+            selectionBox.style.display = 'block';
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            selectionBox.style.left = startX + 'px';
+            selectionBox.style.top = startY + 'px';
+        });
+
+        // 3. Kết thúc chọn (MouseUp)
+        window.addEventListener('mouseup', (e) => {
+            if (isDragging) {
+                isDragging = false;
+                finalizeSelection(img);
+            }
+        });
+    }
+
+    function updateSelectionBox(e, rect) {
+        const currentX = e.clientX - rect.left;
+        const currentY = e.clientY - rect.top;
+        
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+        const left = Math.min(currentX, startX);
+        const top = Math.min(currentY, startY);
+        
+        selectionBox.style.width = width + 'px';
+        selectionBox.style.height = height + 'px';
+        selectionBox.style.left = left + 'px';
+        selectionBox.style.top = top + 'px';
+    }
+
+    function finalizeSelection(img) {
+        // Tính toán tọa độ thực tế (Natural dimensions) để điền vào form
+        const rect = img.getBoundingClientRect();
+        
+        // Lấy kích thước từ style của selectionBox (pixel hiển thị)
+        const displayedLeft = parseFloat(selectionBox.style.left);
+        const displayedTop = parseFloat(selectionBox.style.top);
+        const displayedWidth = parseFloat(selectionBox.style.width);
+        const displayedHeight = parseFloat(selectionBox.style.height);
+        
+        // Tỉ lệ scale
+        const scaleX = img.naturalWidth / img.width;
+        const scaleY = img.naturalHeight / img.height;
+        
+        // Chuyển đổi sang tọa độ ảnh gốc
+        const realX = Math.round(displayedLeft * scaleX);
+        const realY = Math.round(displayedTop * scaleY);
+        const realW = Math.round(displayedWidth * scaleX);
+        const realH = Math.round(displayedHeight * scaleY);
+        
+        console.log(`Vùng chọn: X=${realX}, Y=${realY}, W=${realW}, H=${realH}`);
+        
+        // Tự động điền vào Form (Nếu các input tồn tại)
+        fillInput('x_start', realX);
+        fillInput('y_start', realY);
+        fillInput('width', realW);
+        fillInput('height', realH);
+    }
+
+    function fillInput(name, value) {
+        const input = document.querySelector(`input[name="${name}"]`);
+        if (input) {
+            input.value = value;
+            // Tạo hiệu ứng nhấp nháy để người dùng biết đã điền
+            input.style.backgroundColor = '#e8f0fe';
+            setTimeout(() => input.style.backgroundColor = '', 500);
+        }
+    }
     // Khởi tạo tab đầu tiên khi tải trang
     document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('.tab-button').click(); 

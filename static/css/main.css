@@ -134,3 +134,34 @@ body {
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
+/* Style cho vùng chọn (Selection Box) */
+.selection-box {
+    position: absolute;
+    border: 2px dashed #ff0000; /* Viền đỏ đứt đoạn */
+    background-color: rgba(255, 0, 0, 0.1); /* Màu nền đỏ nhạt */
+    pointer-events: none; /* Để chuột xuyên qua, không chặn sự kiện */
+    display: none;
+    z-index: 10;
+}
+
+/* Container cho ảnh để định vị tương đối */
+.img-container {
+    position: relative;
+    display: inline-block;
+    cursor: crosshair; /* Con trỏ hình chữ thập để dễ chọn */
+}
+
+/* Hiển thị tọa độ */
+.pixel-info {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 20;
+    white-space: nowrap;
+}
+

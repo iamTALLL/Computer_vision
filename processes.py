@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from io import BytesIO
 import base64
-from sklearn.cluster import KMeans, MeanShift
+from sklearn.cluster import KMeans, MeanShift, estimate_bandwidth
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import NearestNeighbors
 
@@ -772,64 +772,79 @@ def ml_segmentation(image_bytes, model_type='kmeans', n_clusters=3, bandwidth=No
 
     if img_bgr is None: raise ValueError("Không thể đọc được dữ liệu ảnh.")
     
-    # 1. Chuẩn bị dữ liệu (Reshape ảnh 2D thành mảng 1D của các pixel RGB)
+    # 1. Chuẩn bị dữ liệu
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    original_shape = img_bgr.shape # Lưu kích thước gốc
     pixel_data = img_rgb.reshape((-1, 3)).astype(np.float32)
     
-    # Khởi tạo ảnh cuối cùng
-    final_img = None
-    note = "Phân vùng hoàn tất."
-
-    # 2. ÁP DỤNG THUẬT TOÁN ML
+    # Khởi tạo biến
+    labels = None
+    cluster_centers = None
+    note = "Phân vùng thất bại."
     
-    if model_type == 'kmeans':
+    try:
         # --- K-MEANS (Sử dụng OpenCV) ---
-        if n_clusters < 2 or n_clusters > 10:
-             n_clusters = np.clip(n_clusters, 2, 10)
-             note = f"Số nhóm K được giới hạn về {n_clusters}."
-             
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
-        _, labels, centers = cv2.kmeans(
-            pixel_data, n_clusters, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
-        )
-        
-        centers = np.uint8(centers)
-        segmented_img_rgb = centers[labels.flatten()]
-        segmented_img_rgb = segmented_img_rgb.reshape(img_bgr.shape)
-        final_img = cv2.cvtColor(segmented_img_rgb, cv2.COLOR_RGB2BGR)
-        note = f"Phân vùng hoàn tất với {len(centers)} nhóm (K-Means)."
+        if model_type == 'kmeans':
+            if n_clusters < 2 or n_clusters > 10:
+                n_clusters = np.clip(n_clusters, 2, 10)
+                note = f"Số nhóm K được giới hạn về {n_clusters}."
+                
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+            _, labels_cv, centers_cv = cv2.kmeans(
+                pixel_data, n_clusters, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS
+            )
+            labels = labels_cv.flatten()
+            cluster_centers = centers_cv
+            note = f"Phân vùng hoàn tất với {len(centers_cv)} nhóm (K-Means)."
 
-    elif model_type == 'mean_shift':
+        # --- MEAN SHIFT (Sử dụng Scikit-learn) ---
+        elif model_type == 'mean_shift':
+            N = pixel_data.shape[0]
+            MAX_SAMPLES = 10000 
+            
+            # 1. Chuẩn bị dữ liệu mẫu cho ước lượng Bandwidth
+            if N > MAX_SAMPLES:
+                indices = np.random.choice(N, MAX_SAMPLES, replace=False)
+                sample_data = pixel_data[indices].astype(np.uint8)
+            else:
+                sample_data = pixel_data.astype(np.uint8)
+
+            # 2. Ước lượng bandwidth nếu cần
+            if bandwidth is None or bandwidth <= 1e-6:
+                bandwidth = estimate_bandwidth(sample_data, quantile=0.2, n_samples=min(5000, sample_data.shape[0]))
+                if bandwidth < 10: bandwidth = 20
+                note = f"Bandwidth tự động ước lượng: {bandwidth:.2f}"
+
+            # 3. Fit Mean Shift
+            ms = MeanShift(bandwidth=bandwidth, bin_seeding=True, n_jobs=-1) 
+            
+            # FIT: Nếu MemoryError xảy ra, nó sẽ được bắt ở khối ngoài cùng.
+            ms.fit(pixel_data.astype(np.uint8)) 
+            
+            labels = ms.labels_
+            cluster_centers = ms.cluster_centers_
+            n_clusters_ms = len(np.unique(labels))
+            note = f"Phân vùng hoàn tất với {n_clusters_ms} nhóm (Mean Shift)."
         
-        if bandwidth is None or bandwidth <= 0:
-            # Bandwidth: Khoảng cách mà các điểm lân cận ảnh hưởng đến một điểm
-            # Nếu không có tham số bandwidth, MeanShift sẽ tự động ước lượng.
-            # Ta có thể bỏ qua việc ước lượng thủ công nếu MeanShift tự xử lý.
-            pass
-        
-        # 2. Khởi tạo và Fit mô hình
-        # MeanShift không cần n_clusters
-        ms = MeanShift(bandwidth=bandwidth, bin_seeding=True, n_jobs=-1) 
-        
-        # Chuyển pixel_data về uint8 vì MeanShift yêu cầu int
-        ms.fit(pixel_data.astype(np.uint8)) 
-        
-        labels = ms.labels_
-        cluster_centers = ms.cluster_centers_
-        n_clusters_ms = len(np.unique(labels))
-        
-        # 3. Tái tạo ảnh phân vùng
+        else:
+            raise ValueError("Loại mô hình không được hỗ trợ.")
+
+    except MemoryError:
+        raise Exception("Lỗi bộ nhớ: Dữ liệu quá lớn cho Mean Shift. Vui lòng giảm kích thước ảnh gốc.")
+    except Exception as e:
+        raise Exception(f"Lỗi không xác định trong phân vùng: {str(e)}")
+
+    # 3. TÁI TẠO ẢNH PHÂN VÙNG (Áp dụng cho mọi mô hình thành công)
+    if cluster_centers is not None and labels is not None:
         cluster_centers = np.uint8(cluster_centers)
         segmented_img_rgb = cluster_centers[labels]
-        segmented_img_rgb = segmented_img_rgb.reshape(img_bgr.shape)
-        
+        segmented_img_rgb = segmented_img_rgb.reshape(original_shape)
         final_img = cv2.cvtColor(segmented_img_rgb, cv2.COLOR_RGB2BGR)
-        note = f"Phân vùng hoàn tất với {n_clusters_ms} nhóm (Mean Shift)."
-
     else:
-        raise ValueError("Loại mô hình không được hỗ trợ.")
+        # Trường hợp hiếm khi labels hoặc centers bị lỗi (nhưng không crash)
+        raise Exception("Lỗi tái tạo ảnh phân vùng.")
 
-    # Mã hóa và trả về JSON dict
+    # 4. Mã hóa và trả về JSON dict
     processed_base64 = encode_image_to_base64(final_img)
     return {
         'filtered_image': processed_base64,
@@ -841,116 +856,116 @@ KNOWLEDGE_DB = {
     "negative_image": {
         "name": "Biến đổi Âm bản (Image Negative)",
         "description": "Thủ thuật đảo ngược mức xám của ảnh. Mức sáng nhất trở thành tối nhất, và ngược lại. Hữu ích cho việc tăng cường chi tiết ở các vùng ảnh tối.",
-        "formula": "Công thức biến đổi: $$s = L - 1 - r$$ Với ảnh 8-bit, $L=256$, công thức là $s = 255 - r$.",
+        "formula": r"Công thức biến đổi: $$s = L - 1 - r$$ Với ảnh 8-bit, $L=256$, công thức là $s = 255 - r$.",
         "purpose": "Tạo ảnh âm bản, làm nổi bật các chi tiết ở vùng tối (ví dụ: ảnh y tế)."
     },
     "log_transform": {
         "name": "Biến đổi Logarit (Logarithmic Transformation)",
         "description": "Nén dải động của ảnh, ánh xạ dải cường độ đầu vào hẹp sang dải cường độ đầu ra rộng hơn. Đặc biệt hiệu quả cho việc làm nổi bật chi tiết ở vùng tối của ảnh có dải động lớn.",
-        "formula": "Công thức biến đổi: $$s = c \\cdot \\log(1 + r)$$",
+        "formula": r"Công thức biến đổi: $$s = c \\cdot \\log(1 + r)$$",
         "purpose": "Nén dải động lớn (ví dụ: phổ Fourier, ảnh chụp X-quang) để các chi tiết tối có thể nhìn thấy."
     },
     "power_law_transform": {
         "name": "Biến đổi Luật Công suất (Gamma Correction)",
         "description": "Điều chỉnh độ sáng và độ tương phản phi tuyến tính. Nếu $\\gamma < 1$ làm sáng ảnh, $\\gamma > 1$ làm tối ảnh. Đây là phương pháp điều chỉnh gamma tiêu chuẩn.",
-        "formula": "Công thức biến đổi: $$s = c \\cdot r^{\\gamma}$$ Trong đó, $r$ là cường độ pixel đã được chuẩn hóa về dải [0, 1].",
+        "formula": r"Công thức biến đổi: $$s = c \\cdot r^{\\gamma}$$ Trong đó, $r$ là cường độ pixel đã được chuẩn hóa về dải [0, 1].",
         "purpose": "Hiệu chỉnh độ sáng màn hình (gamma correction) hoặc cải thiện chi tiết vùng tối/sáng."
     },
     "mean_filter": {
         "name": "Lọc Trung bình (Smoothing Linear Filter)",
         "description": "Đây là bộ lọc tuyến tính cơ bản nhất. Nó thay thế giá trị của mỗi pixel bằng giá trị trung bình (mean) của các pixel nằm trong cửa sổ (kernel) lân cận. Hiệu quả trong việc làm mờ ảnh và giảm nhiễu Gaussian.",
-        "formula": "Giá trị mới được tính bằng: $$g(x,y) = \\frac{1}{K} \\sum_{(s,t) \\in S} f(s,t)$$ Trong đó $K$ là số pixel trong cửa sổ $S$.",
+        "formula": r"Giá trị mới được tính bằng: $$g(x,y) = \\frac{1}{K} \\sum_{(s,t) \\in S} f(s,t)$$ Trong đó $K$ là số pixel trong cửa sổ $S$.",
         "purpose": "Làm mịn ảnh (blurring), giảm nhiễu ngẫu nhiên (random noise)."
     },
     "median_filter": {
         "name": "Lọc Trung vị (Median Filter)",
         "description": "Đây là bộ lọc phi tuyến tính. Nó thay thế giá trị của mỗi pixel bằng giá trị trung vị (median) của các pixel trong cửa sổ lân cận. Rất hiệu quả trong việc loại bỏ nhiễu Salt-and-Pepper (nhiễu hạt tiêu) mà ít làm mờ cạnh hơn lọc trung bình.",
-        "formula": "Giá trị mới được tính bằng: $$g(x,y) = \\text{median} \\{ f(s,t) \\mid (s,t) \\in S \\}$$",
+        "formula": r"Giá trị mới được tính bằng: $$g(x,y) = \\text{median} \\{ f(s,t) \\mid (s,t) \\in S \\}$$",
         "purpose": "Khử nhiễu phi tuyến tính, đặc biệt là nhiễu hạt tiêu."
     },
     "laplacian_sharpen": {
         "name": "Làm sắc nét bằng Bộ lọc Laplacian",
         "description": "Bộ lọc Laplacian là một bộ lọc đạo hàm bậc hai, được sử dụng để phát hiện cạnh và tăng cường chi tiết. Phép làm sắc nét được thực hiện bằng cách kết hợp ảnh gốc với kết quả của bộ lọc Laplacian.",
-        "formula": "Làm sắc nét: $$g(x,y) = f(x,y) - \\nabla^2 f(x,y)$$ Trong đó $\\nabla^2 f(x,y)$ là kết quả của bộ lọc Laplacian.",
+        "formula": r"Làm sắc nét: $$g(x,y) = f(x,y) - \\nabla^2 f(x,y)$$ Trong đó $\\nabla^2 f(x,y)$ là kết quả của bộ lọc Laplacian.",
         "purpose": "Tăng cường chi tiết cạnh (sharpening), làm rõ các ranh giới trong ảnh."
     },
     "histogram_equalization": {
         "name": "Cân bằng Histogram",
         "description": "Thủ thuật cải thiện độ tương phản bằng cách 'kéo giãn' phạm vi cường độ pixel, làm cho các giá trị pixel sử dụng toàn bộ dải động có sẵn. Nó biến đổi phân bố histogram ban đầu thành một phân bố gần như đồng nhất.",
-        "formula": "Giá trị cường độ mới $s_k$ được tính bằng: $$s_k = T(r_k) = (L-1) \\sum_{j=0}^{k} p_r(r_j)$$",
+        "formula": r"Giá trị cường độ mới $s_k$ được tính bằng: $$s_k = T(r_k) = (L-1) \\sum_{j=0}^{k} p_r(r_j)$$",
         "purpose": "Tăng cường độ tương phản ở các vùng ảnh tối hoặc sáng quá mức."
     },
     "gaussian_lowpass_filter": {
         "name": "Bộ lọc Thông thấp Gaussian (GLPF)",
         "description": "Bộ lọc làm mịn (smoothing) trong miền tần số. Nó giảm các thành phần tần số cao (chi tiết cạnh, nhiễu) bằng cách nhân với hàm Gaussian trong phổ Fourier. Không gây hiện tượng Ring.",
-        "formula": "Hàm truyền bộ lọc: $$H(u,v)=e^{-D^{2}(u,v)/2D_{0}^{2}}$$ Trong đó $D(u,v)$ là khoảng cách từ trung tâm phổ, $D_0$ là tần số cắt.",
+        "formula": r"Hàm truyền bộ lọc: $$H(u,v)=e^{-D^{2}(u,v)/2D_{0}^{2}}$$ Trong đó $D(u,v)$ là khoảng cách từ trung tâm phổ, $D_0$ là tần số cắt.",
         "purpose": "Làm mịn ảnh, giảm nhiễu (noise reduction)."
     },
     "gaussian_highpass_filter": {
         "name": "Bộ lọc Thông cao Gaussian (GHPF)",
         "description": "Bộ lọc làm sắc nét (sharpening) trong miền tần số. Nó tăng cường các thành phần tần số cao (chi tiết cạnh) và giảm tần số thấp (vùng đồng nhất). Được xây dựng từ GLPF: $H_{hp} = 1 - H_{lp}$.",
-        "formula": "$$H(u,v)=1-e^{-D^{2}(u,v)/2D_{0}^{2}}$$ Trong đó $D_0$ là tần số cắt.",
+        "formula": r"$$H(u,v)=1-e^{-D^{2}(u,v)/2D_{0}^{2}}$$ Trong đó $D_0$ là tần số cắt.",
         "purpose": "Làm sắc nét, phát hiện cạnh (edge detection)."
     },
     "ideal_lowpass_filter": {
         "name": "Bộ lọc Thông thấp Lý tưởng (ILPF)",
         "description": "Bộ lọc làm mịn đơn giản nhất. Nó cắt hoàn toàn (cứng nhắc) tất cả các tần số nằm ngoài bán kính cắt $D_0$. Sự chuyển đổi đột ngột này tạo ra **Hiệu ứng Ring (Ringing Artifacts)** rõ rệt trong ảnh không gian.",
-        "formula": "$$H(u,v)=\\begin{cases}1&\\text{nếu } D(u,v)\\le D_{0} \\\\ 0&\\text{nếu } D(u,v)>D_{0}\\end{cases}$$",
+        "formula": r"$$H(u,v)=\\begin{cases}1&\\text{nếu } D(u,v)\\le D_{0} \\\\ 0&\\text{nếu } D(u,v)>D_{0}\\end{cases}$$",
         "purpose": "Làm mịn ảnh (Chủ yếu dùng để minh họa hiệu ứng Ring)."
     },
     "ideal_highpass_filter": {
         "name": "Bộ lọc Thông cao Lý tưởng (IHPF)",
         "description": "Bộ lọc làm sắc nét cơ bản. Nó loại bỏ hoàn toàn các tần số thấp (vùng đồng nhất) và giữ lại các tần số cao. Cũng gây ra **Hiệu ứng Ring nghiêm trọng** trong ảnh kết quả.",
-        "formula": "$$H(u,v)=\\begin{cases}0&\\text{nếu } D(u,v)\\le D_{0} \\\\ 1&\\text{nếu } D(u,v)>D_{0}\\end{cases}$$",
+        "formula": r"$$H(u,v)=\\begin{cases}0&\\text{nếu } D(u,v)\\le D_{0} \\\\ 1&\\text{nếu } D(u,v)>D_{0}\\end{cases}$$",
         "purpose": "Làm sắc nét cạnh (Chủ yếu dùng để minh họa hiệu ứng Ring khi làm sắc nét)."
     },
 
     "butterworth_lowpass_filter": {
         "name": "Bộ lọc Thông thấp Butterworth (BLPF)",
         "description": "Bộ lọc làm mịn có khả năng chuyển tiếp mượt mà giữa tần số thấp và tần số cao (kiểm soát bởi bậc $n$). Nó là một cải tiến lớn so với ILPF và **không tạo ra hiện tượng Ring**.",
-        "formula": "$$H(u,v)=\\frac{1}{1+[D(u,v)/D_{0}]^{2n}}$$ Trong đó $n$ là bậc (order) của bộ lọc.",
+        "formula": r"$$H(u,v)=\\frac{1}{1+[D(u,v)/D_{0}]^{2n}}$$ Trong đó $n$ là bậc (order) của bộ lọc.",
         "purpose": "Làm mịn ảnh chất lượng cao mà không gây hiệu ứng Ring."
     },
     "butterworth_highpass_filter": {
         "name": "Bộ lọc Thông cao Butterworth (BHPF)",
         "description": "Bộ lọc làm sắc nét có chuyển tiếp mượt mà, giúp tăng cường cạnh mà **không gây hiện tượng Ring**. Độ dốc của sự chuyển tiếp được kiểm soát bởi bậc $n$.",
-        "formula": "Hàm truyền bộ lọc: $$H(u,v)=\\frac{1}{1+[D_{0}/D(u,v)]^{2n}}$$ Trong đó $n$ là bậc (order) của bộ lọc.",
+        "formula": r"Hàm truyền bộ lọc: $$H(u,v)=\\frac{1}{1+[D_{0}/D(u,v)]^{2n}}$$ Trong đó $n$ là bậc (order) của bộ lọc.",
         "purpose": "Làm sắc nét cạnh và tăng cường chi tiết mà không tạo ra nhiễu Ring."
     },
     "contra_harmonic_mean": {
             "name": "Bộ lọc Trung bình Nghịch điều hòa",
             "description": "Bộ lọc tuyến tính, có khả năng chọn lọc loại bỏ nhiễu đơn cực. Nếu bậc Q > 0, nó loại bỏ nhiễu tiêu (pepper). Nếu Q < 0, nó loại bỏ nhiễu muối (salt). Nó được xem là một trong những bộ lọc mạnh mẽ nhất cho nhiễu xung.",
-            "formula": "$$\\hat{f}(x,y)=\\frac{\\sum_{(s,t)\\in S_{xy}}g(s,t)^{Q+1}}{\\sum_{(s,t)\\in S_{xy}}g(s,t)^{Q}}$$ Trong đó, $S_{xy}$ là cửa sổ lọc.",
+            "formula": r"$$\\hat{f}(x,y)=\\frac{\\sum_{(s,t)\\in S_{xy}}g(s,t)^{Q+1}}{\\sum_{(s,t)\\in S_{xy}}g(s,t)^{Q}}$$ Trong đó, $S_{xy}$ là cửa sổ lọc.",
             "purpose": "Khử nhiễu muối (Salt) và nhiễu tiêu (Pepper) một cách có chọn lọc."
     },
     "adaptive_local_filter": {
         "name": "Bộ lọc Giảm nhiễu Cục bộ Thích nghi (Adaptive Local Noise)",
         "description": "Bộ lọc thông minh, tự động thay đổi mức độ lọc cho từng pixel dựa trên thống kê cục bộ (trung bình và phương sai cục bộ $\\sigma_L^2$) so với phương sai nhiễu đã biết ($\\sigma_{\\eta}^2$). Nó giữ lại chi tiết cạnh tốt hơn nhiều so với bộ lọc tuyến tính cố định.",
-        "formula": "Giá trị ước lượng: $$\\hat{f}(x,y)=g(x,y)-\\frac{\\sigma_{\\eta}^{2}}{\\sigma_{L}^{2}}[g(x,y)-m_{L}]$$",
+        "formula": r"Giá trị ước lượng: $$\\hat{f}(x,y)=g(x,y)-\\frac{\\sigma_{\\eta}^{2}}{\\sigma_{L}^{2}}[g(x,y)-m_{L}]$$",
         "purpose": "Giảm nhiễu hiệu suất cao trong khi bảo toàn các chi tiết cạnh."
     },
     "inverse_filter": {
         "name": "Lọc Nghịch đảo (Inverse Filtering)",
         "description": "Thủ thuật phục hồi ảnh trong miền tần số. Nó được sử dụng để loại bỏ sự làm mờ (deblurring) gây ra bởi quá trình suy giảm tuyến tính, bất biến theo vị trí (ví dụ: chuyển động của camera). Đây là phương pháp khôi phục ảnh đơn giản nhất.",
-        "formula": "Ước lượng ảnh gốc: $$\\hat{F}(u,v) = \\frac{G(u,v)}{H(u,v)}$$ Trong đó $G(u,v)$ là ảnh bị suy giảm, và $H(u,v)$ là hàm suy giảm ước lượng. (Cần giới hạn tần số để tránh khuếch đại nhiễu).",
+        "formula": r"Ước lượng ảnh gốc: $$\\hat{F}(u,v) = \\frac{G(u,v)}{H(u,v)}$$ Trong đó $G(u,v)$ là ảnh bị suy giảm, và $H(u,v)$ là hàm suy giảm ước lượng. (Cần giới hạn tần số để tránh khuếch đại nhiễu).",
         "purpose": "Khôi phục ảnh bị mờ do chuyển động (motion blur) hoặc hiệu ứng khí quyển bằng cách đảo ngược hàm suy giảm."
     },
     "otsu_segmentation": {
         "name": "Ngưỡng hóa Otsu (Otsu Thresholding)",
         "description": "Là một phương pháp ngưỡng hóa tự động, không cần tham số. Thuật toán Otsu tìm giá trị ngưỡng tối ưu để chia ảnh thành hai lớp (nền và đối tượng) bằng cách tối đa hóa phương sai giữa các lớp (inter-class variance).",
-        "formula": "$$\\sigma^2_B(T) = w_0(\\mu_0 - \mu_T)^2 + w_1(\\mu_1 - \mu_T)^2$$ Tối đa hóa $\\sigma^2_B$ để tìm ngưỡng $T$ tối ưu.",
+        "formula": r"Tối đa hóa: $$\sigma^2_B(T) = w_0(\mu_0 - \mu_T)^2 + w_1(\mu_1 - \mu_T)^2$$ Tối đa hóa $\sigma^2_B$ để tìm ngưỡng $T$ tối ưu.",
         "purpose": "Phân vùng ảnh nhị phân tự động, hiệu quả khi histogram có hai đỉnh rõ rệt."
     },
     "kmeans_segmentation": {
         "name": "K-Means Clustering cho Phân vùng",
         "description": "K-Means là thuật toán học máy không giám sát, được dùng để phân vùng ảnh bằng cách nhóm các pixel lại với nhau. Các pixel gần nhau trong không gian màu (RGB) và/hoặc không gian vị trí (XY) được coi là thuộc cùng một phân đoạn (segment).",
-        "formula": "Tối thiểu hóa: $$J = \\sum_{k=1}^{K} \\sum_{i \\in S_k} ||x_i - \mu_k||^2$$ Trong đó $K$ là số nhóm (clusters), $x_i$ là pixel, và $\mu_k$ là trung tâm của nhóm $k$.",
+        "formula": r"Tối thiểu hóa: $$J = \sum_{k=1}^{K} \sum_{i \in S_k} ||x_i - \mu_k||^2$$",
         "purpose": "Phân đoạn ảnh dựa trên màu sắc hoặc kết cấu, giảm số lượng màu."
     },
     "mean_shift_segmentation": {
         "name": "Mean Shift Clustering cho Phân vùng",
         "description": "Mean Shift là thuật toán phân nhóm phi tham số (non-parametric). Nó tìm kiếm các chế độ (modes) hoặc các đỉnh mật độ trong phân phối dữ liệu. Phù hợp cho phân vùng ảnh vì nó không yêu cầu xác định trước số lượng nhóm (K) và giữ được ranh giới tự nhiên.",
-        "formula": "Cập nhật dịch chuyển trung bình: $$m(x) = \\frac{\\sum_{i=1}^{n} K(x_i - x) x_i}{\\sum_{i=1}^{n} K(x_i - x)}$$ Tìm kiếm vector dịch chuyển để hội tụ về tâm khối (centroid).",
+        "formula": r"Cập nhật dịch chuyển trung bình: $$m(x) = \frac{\sum_{i=1}^{n} K(x_i - x) x_i}{\sum_{i=1}^{n} K(x_i - x)}$$ Tìm kiếm vector dịch chuyển để hội tụ về tâm khối (centroid).",
         "purpose": "Phân đoạn ảnh dựa trên mật độ dữ liệu màu, không cần xác định K trước."
     }
     

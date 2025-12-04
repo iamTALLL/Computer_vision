@@ -316,19 +316,34 @@ def process_ml_segmentation():
     try:
         image_bytes = get_image_bytes()
         
-        # Lấy tham số mô hình từ form data
+        # BƯỚC 1: Lấy Loại Mô hình và Khởi tạo tham số
         model_type = request.form.get('model_type', 'kmeans')
-        n_clusters = int(request.form.get('n_clusters', 3))
-        # Bandwidth là float, dùng None nếu bằng 0
-        bandwidth = float(request.form.get('bandwidth', 0.0))
-        
-        # Gọi hàm xử lý chính
+        n_clusters = None
+        final_bandwidth = None
+
+        # BƯỚC 2: RẼ NHÁNH DỰA TRÊN MODEL_TYPE
+        if model_type == 'kmeans':
+            # K-MEANS cần n_clusters (Số nhóm K)
+            n_clusters = int(request.form.get('n_clusters', 3))
+            if n_clusters < 1: n_clusters = 3 # Đảm bảo K >= 1
+            
+        elif model_type == 'mean_shift':
+            # MEAN SHIFT cần bandwidth
+            bandwidth = float(request.form.get('bandwidth', 0.0))
+            # Nếu bandwidth = 0 (hoặc rất nhỏ), chuyển thành None để MeanShift tự ước lượng.
+            final_bandwidth = bandwidth if bandwidth > 1e-6 else None 
+            
+        else:
+            raise ValueError(f"Loại mô hình không được hỗ trợ: {model_type}")
+
+        # BƯỚC 3: Gọi hàm xử lý chính
+        # Chúng ta truyền tất cả các tham số (n_clusters=None hoặc bandwidth=None) 
+        # và hàm ml_segmentation sẽ chỉ sử dụng tham số liên quan đến model_type.
         results_dict = ml_segmentation(
             image_bytes, 
             model_type=model_type, 
             n_clusters=n_clusters,
-            # Chỉ truyền bandwidth nếu nó được user nhập > 0 (hoặc None nếu = 0 để MeanShift tự ước lượng)
-            bandwidth=bandwidth if bandwidth > 1e-6 else None 
+            bandwidth=final_bandwidth 
         )
         
         # Trả về JSON chứa Base64 strings
@@ -338,5 +353,6 @@ def process_ml_segmentation():
         return jsonify({"error": f"Lỗi triển khai: {str(e)}"}), 501
     except Exception as e:
         return jsonify({"error": f"Lỗi Phân vùng ML: {str(e)}"}), 500
+    
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
