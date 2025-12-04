@@ -1,4 +1,4 @@
-# 👁️ Computer Vision API
+# Computer Vision API
 
 Dự án này là một API mô phỏng các kỹ thuật xử lý ảnh số và thị giác máy tính, được triển khai bằng Flask (Python). Mục tiêu là cung cấp một nền tảng demo tương tác (Front-end) để minh họa các thuật toán cơ bản, nâng cao, và Machine Learning trong xử lý ảnh.
 
@@ -23,11 +23,11 @@ Dự án này là một API mô phỏng các kỹ thuật xử lý ảnh số v�
 
 ---
 
-## 📋 Danh sách Thủ thuật (Phân loại theo Tabs)
+## Danh sách Thủ thuật (Phân loại theo Tabs)
 
 API được chia thành các phần chính, tương ứng với các lĩnh vực trong xử lý ảnh:
 
-### TAB 1: 💡 Cải thiện Hình ảnh (Điểm, Histogram & Không gian)
+### TAB 1: Cải thiện Hình ảnh (Điểm, Histogram & Không gian)
 
 Các kỹ thuật cơ bản cải thiện độ sáng, độ tương phản, và lọc cục bộ.
 
@@ -39,7 +39,7 @@ Các kỹ thuật cơ bản cải thiện độ sáng, độ tương phản, và
 | **Cân bằng Histogram** | `/api/process/histogram_equalization` | Histogram | - |
 | **Lọc Miền Không gian (Chung)** | `/api/process/spatial_filter` | Lọc | `filter_type` (mean/median/laplacian\_sharpen), `kernel_size` |
 
-### TAB 2: 🌊 Lọc trong Miền Tần số (Frequency Domain)
+### TAB 2: Lọc trong Miền Tần số (Frequency Domain)
 
 Các bộ lọc phức tạp sử dụng Biến đổi Fourier để làm mịn (Lowpass) hoặc làm sắc nét (Highpass).
 
@@ -52,7 +52,7 @@ Các bộ lọc phức tạp sử dụng Biến đổi Fourier để làm mịn 
 | **Ideal Highpass (IHPF)** | `/api/process/ideal_highpass_filter` | HPF | `D0` |
 | **Butterworth Highpass (BHPF)** | `/api/process/butterworth_highpass_filter` | HPF | `D0`, `n` (Order) |
 
-### TAB 3: 🩹 Xử lý Nâng cao & Phục hồi (Restoration)
+### TAB 3: Xử lý Nâng cao & Phục hồi (Restoration)
 
 Các bộ lọc thống kê và phục hồi tiên tiến, được thiết kế để xử lý các mô hình nhiễu cụ thể.
 
@@ -62,7 +62,7 @@ Các bộ lọc thống kê và phục hồi tiên tiến, được thiết kế
 | **Bộ lọc Giảm nhiễu Thích nghi** | `/api/process/adaptive_local_filter` | Thống kê | `kernel_size`, Vùng Ước lượng Nhiễu (x\_start, y\_start, width, height) |
 | **Lọc Nghịch đảo** | `/api/process/inverse_filter` | Phục hồi | `modelK`, `cutoff_ratio` (Giới hạn tần số) |
 
-### TAB 4: 📊 Phân vùng Ảnh (Segmentation)
+### TAB 4: Phân vùng Ảnh (Segmentation)
 
 Sử dụng các thuật toán truyền thống và Machine Learning để phân chia ảnh thành các vùng có ý nghĩa.
 
@@ -80,3 +80,4 @@ Sử dụng các thuật toán truyền thống và Machine Learning để phân
 * **Phục hồi Ảnh:** Triển khai các thuật toán nâng cao như Lọc Nghịch điều hòa (chống nhiễu Salt/Pepper) và Lọc Thích nghi (chống nhiễu Gaussian).
 
 * **MathJax Support:** Công thức LaTeX được hiển thị đẹp mắt trên Front-end để minh họa lý thuyết.
+
