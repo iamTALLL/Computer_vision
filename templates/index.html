@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>API Computer Vision</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <script>
+        window.MathJax = {
+        tex: { inlineMath: [["$", "$"], ["\\(", "\\)"]] },
+        svg: { fontCache: "global" }
+        };
+    </script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+</head>
+<body>
+
+<div class="tabs">
+    <button class="tab-button active" onclick="showTab('tab-1-cai-thien')">1. Cải thiện Hình ảnh (Điểm & Hist)</button>
+    <button class="tab-button" onclick="showTab('tab-2-loc-tan-so')">2. Lọc (Miền Tần số)</button>
+    <button class="tab-button" onclick="showTab('tab-3-nang-cao')">3. Xử lý Nâng cao & Phục hồi</button>
+    <button class="tab-button" onclick="showTab('tab-4-phan-doan')">4. Phân đoạn ảnh</button>
+    </div>
+
+<div class="container">
+    
+    <div id="tab-1-cai-thien" class="tab-content active">
+        <aside class="technique-list">
+            <h3>Xử lý Điểm</h3>
+            <button onclick="showTechnique('negative_image')">1. Biến đổi Âm bản</button>
+            <button onclick="showTechnique('log_transform')">2. Biến đổi Logarit</button>
+            <button onclick="showTechnique('power_law_transform')">3. Biến đổi Luật Công suất (Gamma)</button>
+            <h3>Xử lý Histogram</h3>
+            <button onclick="showTechnique('histogram_equalization')">4. Cân bằng Histogram</button>
+            <h3>Lọc miền không gian</h3>
+            <button onclick="showTechnique('spatial_filter')">5. Lọc miền không gian với 3 phương pháp</button>
+        </aside>
+
+        <main id="detail-area-1" class="main-content">
+            <h2 id="technique-title">Chọn một thủ thuật từ danh sách bên trái để xem chi tiết và mô phỏng.</h2>
+            <hr>
+            <div id="knowledge-content-container"></div> 
+        </main>
+    </div>
+
+    <div id="tab-2-loc-tan-so" class="tab-content">
+        <aside class="technique-list">
+            <h3>Bộ lọc Thông thấp (Smoothing)</h3>
+            <button onclick="showTechnique('gaussian_lowpass_filter')">1. Gaussian (GLPF)</button>
+            <button onclick="showTechnique('ideal_lowpass_filter')">2. Lý tưởng (ILPF)</button>
+            <button onclick="showTechnique('butterworth_lowpass_filter')">3. Butterworth (BLPF)</button>
+            
+            <h3>Bộ lọc Thông cao (Sharpening)</h3>
+            <button onclick="showTechnique('gaussian_highpass_filter')">4. Gaussian (GHPF)</button>
+            <button onclick="showTechnique('ideal_highpass_filter')">5. Lý tưởng (IHPF)</button>
+            <button onclick="showTechnique('butterworth_highpass_filter')">6. Butterworth (BHPF)</button>
+        </aside>
+
+        <main id="detail-area-2" class="main-content">
+            <h2 id="technique-title">Chọn một thủ thuật từ danh sách bên trái để xem chi tiết và mô phỏng.</h2>
+            <hr>
+            <div id="knowledge-content-container"></div> 
+        </main>
+    </div>
+
+    <div id="tab-3-nang-cao" class="tab-content">
+        <aside class="technique-list">
+            <button onclick="showTechnique('contra_harmonic_mean')">1. Bộ lọc Nghịch điều hoà</button>
+            <button onclick="showTechnique('adaptive_local_filter')">2. Bộ lọc Giảm nhiễu Thích nghi</button>
+            <button onclick="showTechnique('inverse_filter')">3. Bộ lọc Nghịch đảo</button>
+
+        </aside>
+        
+        <main id="detail-area-3" class="main-content"> 
+            <h2 id="technique-title">Chọn một thủ thuật từ danh sách bên trái để xem chi tiết và mô phỏng.</h2>
+            <hr>
+        </main>
+    </div>
+
+    <div id="tab-4-phan-doan" class="tab-content">
+        <aside class="technique-list">
+            <button onclick="showTechnique('otsu_segmentation')">1. Ngưỡng hoá Otsu</button>
+            <button onclick="showTechnique('ml_segmentation')">2. Sử dụng mô hình học máy</button>
+        </aside>
+        
+        <main id="detail-area-4" class="main-content"> 
+            <h2 id="technique-title">Chọn một thủ thuật từ danh sách bên trái để xem chi tiết và mô phỏng.</h2>
+            <hr>
+        </main>
+    </div>
+
+</div>
+
+<script>
+    // Cấu hình tham số cho mỗi thủ thuật (Dùng để tạo Form Input động)
+    const SPATIAL_FILTER_OPTIONS = [
+        { text: "Lọc Trung bình (Smoothing)", value: "mean", knowledge_key: "mean_filter" },
+        { text: "Lọc Trung vị (Median)", value: "median", knowledge_key: "median_filter" },
+        { text: "Làm sắc nét (Laplacian)", value: "laplacian_sharpen", knowledge_key: "laplacian_sharpen" }
+    ];
+    
+    const techniqueConfig = {
+        'negative_image': { name: "Biến đổi Âm bản", endpoint: "/api/process/negative_image", params: [] },
+        'log_transform': { name: "Biến đổi Logarit", endpoint: "/api/process/log_transform", 
+            params: [{ name: "Hằng số c", key: "c", type: "number", default: 1.0, step: 0.1 }] 
+        },
+        'power_law_transform': { name: "Biến đổi Luật Công suất", endpoint: "/api/process/power_law_transform", 
+            params: [
+                { name: "Hằng số c", key: "c", type: "number", default: 1.0, step: 0.1 },
+                { name: "Gamma (γ)", key: "gamma", type: "number", default: 0.6, step: 0.1 }
+            ] 
+        },
+        'histogram_equalization': { name: "Cân bằng Histogram", endpoint: "/api/process/histogram_equalization", params: [] },
+        // Lọc Tần số
+        
+        'spatial_filter': { 
+            name: "Lọc miền không gian", 
+            endpoint: "/api/process/spatial_filter",
+            params: [
+                { 
+                    name: "Kiểu lọc", 
+                    key: "filter_type",
+                    type: "select", 
+                    default: "mean", 
+                    options: SPATIAL_FILTER_OPTIONS // Sử dụng danh sách options mới
+                },
+                { name: "Kích thước Kernel", key: "kernel_size", type: "number", default: 3, step: 2 }
+            ],
+            knowledge_keys: { // Khóa kiến thức cần dùng cho thủ thuật này
+                mean: "mean_filter",
+                median: "median_filter",
+                laplacian_sharpen: "laplacian_sharpen"
+            }
+        },
+        'gaussian_lowpass_filter': { name: "GLPF", endpoint: "/api/process/gaussian_lowpass_filter", 
+            is_frequency_domain: true,
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'gaussian_highpass_filter': { name: "GHPF", endpoint: "/api/process/gaussian_highpass_filter",
+            is_frequency_domain: true, 
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'ideal_highpass_filter': { name: "IHPF", endpoint: "/api/process/ideal_highpass_filter", 
+            is_frequency_domain: true,
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'ideal_lowpass_filter': { name: "ILPF", endpoint: "/api/process/ideal_lowpass_filter", 
+            is_frequency_domain: true,
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'butterworth_highpass_filter': { name: "BHPF", endpoint: "/api/process/butterworth_highpass_filter", 
+            is_frequency_domain: true,
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'butterworth_lowpass_filter': { name: "GHPF", endpoint: "/api/process/butterworth_lowpass_filter", 
+            is_frequency_domain: true,
+            params: [{ name: "Tần số cắt (D0)", key: "D0", type: "number", default: 50, step: 1 }] 
+        },
+        'contra_harmonic_mean': { 
+            name: "Bộ lọc Trung bình Nghịch điều hòa", 
+            endpoint: "/api/process/contra_harmonic_mean",
+            params: [
+                { name: "Kích thước Kernel", key: "kernel_size", type: "number", default: 3, step: 2 },
+                { 
+                    name: "Bậc Q", key: "Q", type: "number", default: 1.5, step: 0.1,
+                    note: "Q > 0 loại bỏ nhiễu tiêu, Q < 0 loại bỏ nhiễu muối"
+                }
+            ],
+            // Vì đây là thủ thuật đơn lẻ, knowledge key sẽ là chính nó
+            knowledge_keys: { default: "contra_harmonic_mean" } 
+        },
+        'adaptive_local_filter': {
+            name: "Bộ lọc giảm nhiễu cục bộ thích nghi",
+            endpoint: "/api/process/adaptive_local_filter",
+            params: [
+                {
+                    name: "Kích thước Kernel", key: "kernel_size", type: "number", default: 3, step: 2
+                    },
+                {name: "Toạ độ X của vùng", key: "x_start", type: "number", default: 0, step: 1},
+                {name: "Toạ độ Y của vùng", key: "y_start", type: "number", default: 0, step: 1},
+                {name: "Chiều rộng vùng", key: "width", type: "number", default: 10, step: 1},
+                {name: "Chiều dài vùng", key: "height", type: "number", default: 10, step: 1}
+
+            ]
+        },
+        'inverse_filter': {
+            name: "Bộ lọc đảo ngược",
+            endpoint: "/api/process/inverse_filter",
+            is_frequency_domain: true,
+            params: [
+                {
+                    name: "Tham số cường độ suy giảm", key: "modelK", type: "number", default: 0.0025, step: 0.0001
+                },
+                {
+                    name: "Giới hạn tần số", key: "cutoff_ratio", type: "number", default: 0.7, step: 0.01
+                }
+            ]
+        },
+        'otsu_segmentation': {
+            name: "Ngưỡng hóa Otsu (Otsu Thresholding)",
+            endpoint: "/api/process/otsu_segmentation",
+            params: [],
+            knowledge_key_name: "otsu_segmentation"
+        },
+        'ml_segmentation': {
+            name: "Phân vùng dùng Machine Learning",
+            endpoint: "/api/process/ml_segmentation",
+            params: [
+                {
+                    name: "Chọn Thuật toán", 
+                    key: "model_type",
+                    type: "select", 
+                    default: "kmeans", 
+                    options: [
+                        // Khai thác Clustering Model cho Segmentation
+                        { text: "K-Means Clustering", value: "kmeans", knowledge_key: "kmeans_segmentation" },
+                        { text: "Mean Shift Clustering", value: "mean_shift", knowledge_key: "mean_shift_segmentation" }
+                    ]
+                },
+                // Tham số chung cho cả hai mô hình (chủ yếu cho K-Means)
+                { name: "Số lượng Nhóm (K)", key: "n_clusters", type: "number", default: 3, step: 1 }
+            ],
+            // Dùng khóa kiến thức rẽ nhánh vì có dropdown
+            knowledge_keys: {
+                kmeans: "kmeans_segmentation",
+                mean_shift: "mean_shift_segmentation",
+                default: "kmeans_segmentation"
+            }
+        }
+        // Thêm các thủ thuật còn lại...
+    };
+
+    function showTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+        document.querySelector(`.tabs button[onclick="showTab('${tabId}')"]`).classList.add('active');
+    }
+
+    // Hàm Chính để tải và hiển thị kiến thức
+    function getKnowledgeKey(config, selectedFilterType) {
+        // 1. Nếu đây là thủ thuật có dropdown (spatial_filter)
+        if (config.knowledge_keys) {
+            return config.knowledge_keys[selectedFilterType];
+        }
+        // 2. Nếu là thủ thuật đơn lẻ (log_transform, negative_image, etc.)
+        return config.techKey; // Trả về chính techKey (vd: 'negative_image')
+    }
+
+    async function showTechnique(techKey) {
+        const config = techniqueConfig[techKey];
+        const activeTabId = document.querySelector('.tab-content.active').id;
+        const detailArea = document.getElementById(`detail-area-${activeTabId.split('-')[1]}`);
+
+        if (!config) {
+            detailArea.innerHTML = `<h2>Thủ thuật ${techKey} chưa được triển khai.</h2>`;
+            return;
+        }
+
+        // 1. TẢI VÀ HIỂN THỊ KIẾN THỨC MẶC ĐỊNH
+        let filterTypeParam = config.params.find(p => p.key === 'filter_type');
+        let initialKnowledgeKey = techKey; 
+        
+        if (filterTypeParam) {
+            const defaultFilterType = filterTypeParam.default;
+            initialKnowledgeKey = config.knowledge_keys[defaultFilterType];
+        } else if (config.knowledge_keys && config.knowledge_keys.default) {
+             // Dùng cho thủ thuật đơn lẻ có key default (ví dụ: contra_harmonic_mean)
+             initialKnowledgeKey = config.knowledge_keys.default;
+        }
+        
+        const knowledgeResponse = await fetch(`/api/knowledge/${initialKnowledgeKey}`);
+        const knowledge = await knowledgeResponse.json();
+
+        // 2. TẠO TOÀN BỘ GIAO DIỆN MỚI
+        // TÌM ID CỦA KHU VỰC CHI TIẾT ĐANG HOẠT ĐỘNG
+        
+        const isFrequencyFilter = config.is_frequency_domain;
+
+        // Logic tạo HTML cho Chart Tần số (chỉ tạo nếu là Tab 2)
+        const frequencyChartHTML = isFrequencyFilter ? `
+            <h4>Biểu đồ Miền Tần số:</h4>
+            <div class="frequency-chart-display">
+                <div class="col"> <img id="spectrum-original-${techKey}" src="" alt="Phổ Gốc" style="display:none;"> <p>Phổ Tần số Gốc |F(u,v)|</p> </div>
+                <div class="col"> <img id="filter-mask-${techKey}" src="" alt="Mask H(u,v)" style="display:none;"> <p>Hàm truyền Bộ lọc H(u,v)</p> </div>
+                <div class="col"> <img id="spectrum-filtered-${techKey}" src="" alt="Phổ Đã Lọc" style="display:none;"> <p>Phổ Tần số Đã Lọc |G(u,v)|</p> </div>
+            </div>
+        ` : '';
+        
+        // Gán toàn bộ HTML vào detailArea
+        detailArea.innerHTML = `
+            <h2 id="technique-title">${config.name}</h2>
+            <hr>
+
+            <div class="knowledge-section" id="knowledge-content-${techKey}">
+                <h3>📖 Kiến thức cơ bản về ${knowledge.name}</h3>
+                <p>${knowledge.description}</p>
+                <p><strong>Công thức:</strong> <span class="latex">${knowledge.formula}</span></p> 
+                <p><strong>Mục đích:</strong> ${knowledge.purpose}</p>
+            </div>
+            
+            <hr>
+
+            <div class="simulation-section">
+                <h3>⚙️ Mô phỏng và Thử nghiệm</h3>
+                <form id="simulation-form-${techKey}" action="${config.endpoint}" method="POST" enctype="multipart/form-data">
+                    <label for="image_file">Chọn Ảnh Đầu Vào:</label>
+                    <input type="file" name="image_file" required><br><br>
+                    
+                    ${renderParamsHTML(config)} 
+                    <button type="submit" style="margin-top: 10px;">Áp dụng Thủ thuật</button>
+                </form>
+            </div>
+
+            <div class="results">
+                <h4>Ảnh Before & After:</h4>
+                <div class="image-display">
+                    <div class="col"> <img id="img-before-${techKey}" src="" alt="Ảnh Gốc" style="display:none;"> <p>Ảnh Gốc</p> </div>
+                    <div class="col"> <img id="img-after-${techKey}" src="" alt="Ảnh Đã Xử Lý" style="display:none;"> <p>Ảnh Đã Lọc</p> </div>
+                </div>
+                ${frequencyChartHTML}
+            </div>
+        `;
+        MathJax.typeset();
+
+        
+        // 3. GẮN SỰ KIỆN (Sau khi HTML đã được chèn)
+        
+        // Gắn sự kiện Change cho Dropdown (nếu tồn tại)
+        const filterSelect = detailArea.querySelector('select[name="filter_type"]');
+        if (filterSelect) {
+            filterSelect.addEventListener('change', async (event) => {
+                const selectedType = event.target.value;
+                const knowledgeKey = config.knowledge_keys[selectedType];
+                await updateKnowledgeDisplay(techKey, knowledgeKey);
+            });
+        }
+
+        // Gắn sự kiện submit cho Form
+        document.getElementById(`simulation-form-${techKey}`).addEventListener('submit', (event) => handleFormSubmit(event, techKey));
+    }
+
+    // Hàm updateKnowledgeDisplay cần sửa để nhận knowledgeKey TRỰC TIẾP
+    async function updateKnowledgeDisplay(techKey, knowledgeKey) {
+        // SỬ DỤNG ID CỐ ĐỊNH knowledge-content-${techKey}
+        const knowledgeSection = document.getElementById(`knowledge-content-${techKey}`); 
+        if (!knowledgeSection) return; 
+
+        // 1. Tải KIẾN THỨC
+        const knowledgeResponse = await fetch(`/api/knowledge/${knowledgeKey}`);
+        // ... (logic tải và hiển thị kiến thức) ...
+        if (knowledgeResponse.ok) {
+            const knowledge = await knowledgeResponse.json();
+            knowledgeSection.innerHTML = `
+                <h3>📖 Kiến thức cơ bản về ${knowledge.name}</h3>
+                <p>${knowledge.description}</p>
+                <p><strong>Công thức:</strong> <span class="latex">${knowledge.formula}</span></p> 
+                <p><strong>Mục đích:</strong> ${knowledge.purpose}</p>
+            `;
+        } else {
+            knowledgeSection.innerHTML = "<p>Lỗi tải kiến thức.</p>";
+        }
+    }
+
+    // Tách logic tạo params ra khỏi hàm showTechnique để làm sạch code
+    function renderParamsHTML(config) {
+        // Logic của bạn để tạo paramsHTML (Select hoặc Input) nên nằm ở đây
+        return config.params.map(p => {
+            if (p.type === 'select') {
+                const optionsHTML = p.options.map(opt => 
+                    `<option value="${opt.value}" ${opt.value === p.default ? 'selected' : ''}>${opt.text}</option>`
+                ).join('');
+                return `
+                    <div>
+                        <label for="${p.key}">${p.name}:</label>
+                        <select name="${p.key}">
+                            ${optionsHTML}
+                        </select>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div>
+                        <label for="${p.key}">${p.name}:</label>
+                        <input type="${p.type}" name="${p.key}" value="${p.default}" step="${p.step}">
+                    </div>
+                `;
+            }
+        }).join('');
+    }
+
+    async function handleFormSubmit(event, techKey) {
+        event.preventDefault(); // Ngăn chặn form submit truyền thống
+        const form = event.target;
+        const formData = new FormData(form);
+        const config = techniqueConfig[techKey];
+        
+        // 1. Hiển thị ảnh gốc (Nếu có file được chọn)
+        const fileInput = formData.get('image_file');
+        const imgBefore = document.getElementById(`img-before-${techKey}`);
+        const imgAfter = document.getElementById(`img-after-${techKey}`);
+
+        if (fileInput && fileInput.size > 0) {
+            const originalFormData = new FormData();
+            originalFormData.append('image_file', fileInput);
+            
+            // Gọi API để chuyển file gốc sang PNG
+            const originalResponse = await fetch('/api/convert/to_png', {
+                method: 'POST',
+                body: originalFormData
+            });
+            
+            if (originalResponse.ok) {
+                const originalBlob = await originalResponse.blob();
+                // Sử dụng URL của blob PNG nhận được để hiển thị ảnh gốc
+                imgBefore.src = URL.createObjectURL(originalBlob);
+                imgBefore.style.display = 'block';
+                imgAfter.style.display = 'none'; // Ẩn kết quả cũ
+            } else {
+                // Xử lý lỗi nếu không thể hiển thị ảnh gốc
+                imgBefore.alt = "Lỗi: Không thể hiển thị ảnh gốc (.tif)";
+                imgBefore.style.display = 'block';
+                imgAfter.style.display = 'none';
+                return; 
+            }
+        } else {
+            alert("Vui lòng chọn một file ảnh.");
+            return;
+        }
+
+        // 2. Gửi POST Request đến API
+        try {
+            const response = await fetch(config.endpoint, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                // NHẬN JSON CHỨA TẤT CẢ DỮ LIỆU (Chứa ít nhất 'filtered_image')
+                const results = await response.json();
+                
+                // Hàm hiển thị Base64 (sử dụng lại logic này)
+                const displayBase64 = (id, base64String) => {
+                    const el = document.getElementById(id);
+                    if (el && base64String) { // Thêm kiểm tra base64String có tồn tại không
+                        el.src = 'data:image/png;base64,' + base64String;
+                        el.style.display = 'block';
+                    } else if (el) {
+                        el.style.display = 'none'; // Ẩn nếu không có dữ liệu
+                    }
+                };
+
+                // HIỂN THỊ CÁC THÀNH PHẦN CHUNG: Ảnh Đã Lọc
+                displayBase64(`img-after-${techKey}`, results.filtered_image);
+                
+                // HIỂN THỊ CÁC THÀNH PHẦN CHART (Chỉ tồn tại ở Tab 2)
+                // Nếu các khóa này không tồn tại trong JSON (như ở Tab 1), chúng sẽ bị bỏ qua/ẩn
+                displayBase64(`spectrum-original-${techKey}`, results.original_spectrum);
+                displayBase64(`spectrum-filtered-${techKey}`, results.filtered_spectrum);
+                displayBase64(`filter-mask-${techKey}`, results.filter_mask);
+            } else {
+                const errorData = await response.json();
+                alert(`Lỗi API (${response.status}): ${errorData.error}`);
+            }
+        } catch (error) {
+            alert("Đã xảy ra lỗi kết nối hoặc xử lý mạng.");
+            console.error(error);
+        }
+    }
+
+    // Khởi tạo tab đầu tiên khi tải trang
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelector('.tab-button').click(); 
+    });
+</script>
+
+</body>
+</html>
