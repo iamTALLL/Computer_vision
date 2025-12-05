@@ -2,6 +2,14 @@
 
 Dự án này là một API mô phỏng các kỹ thuật xử lý ảnh số và thị giác máy tính, được triển khai bằng Flask (Python). Mục tiêu là cung cấp một nền tảng demo tương tác (Front-end) để minh họa các thuật toán cơ bản, nâng cao, và Machine Learning trong xử lý ảnh.
 
+## 🚀 Tính năng Nổi bật & Giá trị Độc đáo
+
+* **Cấu trúc Theo Chương trình học:** Ứng dụng được tổ chức thành 5 Tab logic, phản ánh các chương học thuật chính (Cải thiện, Lọc Tần số, Phục hồi, Phân đoạn, Nén).
+* **Trực quan hóa Phổ Tần số:** Các bộ lọc miền tần số (Tab 2, 3) hiển thị **Phổ Biên độ ($|F(u,v)|$)** và **Mặt nạ bộ lọc ($H(u,v)$)** để chứng minh nguyên lý lọc.
+* **Tối ưu Hiệu suất ML:** Mean Shift và các thuật toán ML nặng khác được tối ưu bằng kỹ thuật **Lấy mẫu (Sampling)** để đảm bảo ứng dụng chạy nhanh và ổn định.
+* **Hỗ trợ Công thức MathJax:** Công thức toán học ($\LaTeX$) phức tạp được hiển thị chính xác trên Front-end.
+* **Download Client-side:** Tải ảnh đã xử lý về máy người dùng mà không tốn dung lượng lưu trữ trên server.
+
 ## ⚙️ Yêu cầu Hệ thống và Cài đặt
 
 1.  **Cài đặt Python:** Đảm bảo bạn đang sử dụng Python 3.x.
@@ -70,6 +78,12 @@ Sử dụng các thuật toán truyền thống và Machine Learning để phân
 | :--- | :--- | :--- | :--- |
 | **Ngưỡng hóa Otsu** | `/api/process/otsu_segmentation` | Truyền thống | - |
 | **Phân vùng ML (Chung)** | `/api/process/ml_segmentation` | ML (Clustering) | `model_type` (kmeans/mean\_shift), `n_clusters`, `bandwidth` |
+
+### TAB 5: Nén Ảnh
+
+| Thủ thuật | Endpoint | Loại | Mục đích |
+| :--- | :--- | :--- | :--- |
+| **Nén JPEG** | `/api/process/jpeg_compression` | Nén có tổn hao | Giảm dung lượng file, minh họa nhiễu khối (blockiness) khi Quality thấp. |
 
 ---
 
