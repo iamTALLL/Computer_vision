@@ -5,7 +5,7 @@ Dự án này là một API mô phỏng các kỹ thuật xử lý ảnh số v�
 ## 🚀 Tính năng Nổi bật & Giá trị Độc đáo
 
 * **Cấu trúc Theo Chương trình học:** Ứng dụng được tổ chức thành 5 Tab logic, phản ánh các chương học thuật chính (Cải thiện, Lọc Tần số, Phục hồi, Phân đoạn, Nén).
-* **Trực quan hóa Phổ Tần số:** Các bộ lọc miền tần số (Tab 2, 3) hiển thị **Phổ Biên độ ($|F(u,v)|$)** và **Mặt nạ bộ lọc ($H(u,v)$)** để chứng minh nguyên lý lọc.
+* **Trực quan hóa Phổ Tần số:** Các bộ lọc miền tần số (Tab 2, 3) hiển thị **Phổ Biên độ** ($|F(u,v)|$) và **Mặt nạ bộ lọc** ($H(u,v)$) để chứng minh nguyên lý lọc.
 * **Tối ưu Hiệu suất ML:** Mean Shift và các thuật toán ML nặng khác được tối ưu bằng kỹ thuật **Lấy mẫu (Sampling)** để đảm bảo ứng dụng chạy nhanh và ổn định.
 * **Hỗ trợ Công thức MathJax:** Công thức toán học ($\LaTeX$) phức tạp được hiển thị chính xác trên Front-end.
 * **Download Client-side:** Tải ảnh đã xử lý về máy người dùng mà không tốn dung lượng lưu trữ trên server.
@@ -94,5 +94,6 @@ Sử dụng các thuật toán truyền thống và Machine Learning để phân
 * **Phục hồi Ảnh:** Triển khai các thuật toán nâng cao như Lọc Nghịch điều hòa (chống nhiễu Salt/Pepper) và Lọc Thích nghi (chống nhiễu Gaussian).
 
 * **MathJax Support:** Công thức LaTeX được hiển thị đẹp mắt trên Front-end để minh họa lý thuyết.
+
 
 
